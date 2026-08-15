@@ -1,7 +1,7 @@
 // custom_components/mon_eau/lovelace/mon-eau-cards.js
 // Cartes Lovelace packagées avec l'intégration Mon Eau.
 
-const ME_VERSION = "0.1.0";
+const ME_VERSION = "1.0.0";
 
 // ────────────────────────────────────────────────────────────────────
 // Utilitaires
