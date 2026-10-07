@@ -10,6 +10,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 
 from .const import (
@@ -117,13 +118,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for site in data.get(CONF_BAIGNADE) or []:
             coordinators[f"baignade_{site['site']}"] = BaignadeCoordinator(hass, site)
 
-    # Une station en panne ne doit pas bloquer les autres : seuls les groupes
-    # commune-entiers sont exigés au premier refresh.
-    for key, coordinator in coordinators.items():
-        if key.startswith(("eau_potable", "secheresse")):
-            await coordinator.async_config_entry_first_refresh()
-        else:
-            await coordinator.async_refresh()
+    # Aucun coordinator ne bloque seul le démarrage (ex. réseau d'eau potable
+    # sans résultat) : ses entités restent indisponibles. On ne réessaie
+    # l'entrée entière que si TOUT a échoué (réseau coupé, APIs en panne).
+    for coordinator in coordinators.values():
+        await coordinator.async_refresh()
+    if coordinators and not any(c.last_update_success for c in coordinators.values()):
+        raise ConfigEntryNotReady("Aucune source Mon Eau n'a répondu")
 
     _purger_devices_retires(hass, entry, coordinators, data)
 
