@@ -183,7 +183,17 @@ async def geo_search_communes(session: aiohttp.ClientSession, recherche: str) ->
 async def dis_derniers_resultats(
     session: aiohttp.ClientSession, code_commune: str, reseau_code: str | None
 ) -> list[dict]:
-    """Résultats DIS récents (500 lignes desc ≈ les derniers prélèvements)."""
+    """Résultats DIS récents : les 500 dernières lignes du réseau (ou de la commune).
+
+    Deux pièges Hub'eau (vérifiés le 2026-10-07 sur Besançon) :
+    - une campagne massive sur UN réseau (385 analyses PFAS sur Arcier le
+      29/07) remplit à elle seule les 500 dernières lignes de la commune : un
+      autre réseau n'y figure plus et le filtre local renvoyait vide → « Aucun
+      résultat » → l'entrée restait en échec de démarrage. Le réseau est donc
+      demandé à l'API (`code_reseau`), le filtre local ne reste qu'en garde-fou ;
+    - `sort=desc` ne trie PAS par date de prélèvement (février avant juin) :
+      on retrie ici, `rows[0]` doit être le dernier prélèvement.
+    """
     params = {
         "code_commune": code_commune,
         "size": "500",
@@ -208,14 +218,19 @@ async def dis_derniers_resultats(
             ]
         ),
     }
+    if reseau_code:
+        params["code_reseau"] = reseau_code
     data = await fetch_json(session, URL_DIS_RESULTATS, params)
     rows = data.get("data") or []
     if reseau_code:
-        rows = [
+        filtres = [
             r
             for r in rows
             if any(res.get("code") == reseau_code for res in (r.get("reseaux") or []))
         ]
+        if filtres:  # champ `reseaux` absent ou vide : on fait confiance au filtre API
+            rows = filtres
+    rows.sort(key=lambda r: r.get("date_prelevement") or "", reverse=True)
     return rows
 
 
